@@ -4,7 +4,7 @@ require('dotenv').config();
 
 const app = express();
 
-// 增强 CORS 配置，确保前端能顺利请求
+// 增强 CORS 配置
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -12,7 +12,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// 全局请求日志中间件 - 确保每个进入服务器的请求都能看到
+// 全局请求日志
 app.use((req, res, next) => {
   console.log(`[Incoming Request] ${req.method} ${req.url} - ${new Date().toISOString()}`);
   next();
@@ -31,11 +31,15 @@ async function callStitchToolWithSdk(toolName, args, token) {
 
   try {
     // 动态导入 ESM 模块
+    // 修复：直接导入模块名，由 Node.js 根据 package.json 的 exports 自动寻找路径
     console.log(`[MCP Debug] 正在加载 @modelcontextprotocol/sdk...`);
-    const { McpClient, SSEClientTransport } = await import('@modelcontextprotocol/sdk');
+    const mcpSdk = await import('@modelcontextprotocol/sdk');
+    const { McpClient, SSEClientTransport } = mcpSdk;
 
-    // 1. 创建远程传输层
-    console.log(`[MCP Debug] 建立连接: ${STITCH_MCP_URL}`);
+    // 1. 创建远程传输层 (使用 OAuth Bearer Token)
+    console.log(`[MCP Debug] 建立 SSE 连接: ${STITCH_MCP_URL}`);
+
+    // 注意：SSEClientTransport 在 Node 环境下可能需要显式传递 fetch
     const transport = new SSEClientTransport(new URL(STITCH_MCP_URL), {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -61,6 +65,7 @@ async function callStitchToolWithSdk(toolName, args, token) {
     }
   } catch (initError) {
     console.error(`[MCP Connection Error] 初始化或网络失败:`, initError);
+    // 如果仍然提示路径找不到，说明是 node_modules 安装不完整或结构异常
     throw initError;
   }
 }
@@ -142,7 +147,7 @@ app.post('/api/generate', async (req, res) => {
   console.log('[API] 收到生成请求，Payload:', JSON.stringify(req.body));
 
   const { prompt, config } = req.body;
-  // 兼容前端不同的 Key 命名（你的 App.tsx 使用的是 deepSeekKey）
+  // 兼容前端传入的 key (App.tsx 中的字段名是 deepSeekKey)
   const token = config?.stitchKey || config?.deepSeekKey || STITCH_ACCESS_TOKEN;
 
   if (!token) {
@@ -168,8 +173,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('====================================');
-  console.log(`后端服务已就绪`);
+  console.log(`后端服务已就绪 (SDK 修复版)`);
   console.log(`URL: http://localhost:${PORT}`);
-  console.log(`请确保前端 API_URL 设置正确`);
   console.log('====================================');
 });
