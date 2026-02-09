@@ -1,6 +1,10 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import fetch from 'node-fetch';
+
+// 初始化环境变量
+dotenv.config();
 
 const app = express();
 
@@ -19,59 +23,75 @@ app.use((req, res, next) => {
 });
 
 // --- 配置 ---
+// 优先从环境变量读取，如果前端未传值，则使用此默认值
 const STITCH_ACCESS_TOKEN = process.env.STITCH_ACCESS_TOKEN;
 const DEFAULT_PROJECT_ID = process.env.STITCH_PROJECT_ID;
 const STITCH_MCP_URL = 'https://stitch.googleapis.com/mcp';
 
 /**
- * 使用官方 SDK 调用 Stitch MCP 工具
+ * 核心修复：手动实现基于 JSON-RPC 的工具调用
+ * 绕过 SDK 路径解析问题，直接通过 HTTP 调用远程 MCP 服务
  */
-async function callStitchToolWithSdk(toolName, args, token) {
-  console.log(`[MCP Debug] 启动工具调用: ${toolName}`);
+async function callStitchToolDirect(toolName, args, token) {
+  console.log(`[Stitch Debug] 正在调用工具: ${toolName}`);
 
+  // 生成标准的 JSON-RPC 2.0 请求
+  const payload = {
+    jsonrpc: "2.0",
+    id: Date.now(),
+    method: "tools/call",
+    params: {
+      name: toolName,
+      arguments: args
+    }
+  };
+  console.log("[Stitch Debug]接收请求参数：%j",payload);
   try {
-    // 动态导入 ESM 模块
-    // 修复：直接导入模块名，由 Node.js 根据 package.json 的 exports 自动寻找路径
-    console.log(`[MCP Debug] 正在加载 @modelcontextprotocol/sdk...`);
-    const mcpSdk = await import('@modelcontextprotocol/sdk');
-    const { McpClient, SSEClientTransport } = mcpSdk;
-
-    // 1. 创建远程传输层 (使用 OAuth Bearer Token)
-    console.log(`[MCP Debug] 建立 SSE 连接: ${STITCH_MCP_URL}`);
-
-    // 注意：SSEClientTransport 在 Node 环境下可能需要显式传递 fetch
-    const transport = new SSEClientTransport(new URL(STITCH_MCP_URL), {
+    const response = await fetch(STITCH_MCP_URL, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        'X-Goog-Api-Key': token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
 
-    // 2. 创建客户端
-    const client = await McpClient.create(transport);
-    console.log(`[MCP Debug] 客户端连接已建立`);
+    const responseText = await response.text();
 
-    try {
-      // 3. 执行
-      console.log(`[MCP Debug] 执行中...`);
-      const result = await client.callTool(toolName, args);
-      console.log(`[MCP Debug] 调用成功`);
-      return result;
-    } catch (toolError) {
-      console.error(`[MCP Tool Error] ${toolName} 失败:`, toolError);
-      throw toolError;
-    } finally {
-      await client.close();
-      console.log(`[MCP Debug] 连接已关闭`);
+    if (!response.ok) {
+      // 针对 401 错误提供特殊说明
+      if (response.status === 401) {
+        throw new Error(`身份验证失败 (401): 请检查您的 Stitch Access Token 是否正确或已过期。原文: ${responseText}`);
+      }
+      throw new Error(`HTTP Error ${response.status}: ${responseText}`);
     }
-  } catch (initError) {
-    console.error(`[MCP Connection Error] 初始化或网络失败:`, initError);
-    // 如果仍然提示路径找不到，说明是 node_modules 安装不完整或结构异常
-    throw initError;
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`无法解析响应 JSON: ${responseText}`);
+    }
+
+    if (data.error) {
+      throw new Error(`MCP 逻辑错误: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
+    // Stitch 的响应结构通常在 result.content 中
+    if (data.result && data.result.isError) {
+      throw new Error(`工具执行返回错误: ${data.result.content?.[0]?.text || '未知错误'}`);
+    }
+
+    console.log(`[Stitch Debug] ${toolName} 响应成功`);
+    return data.result;
+  } catch (error) {
+    console.error(`[Stitch Connection Error]`, error.message);
+    throw error;
   }
 }
 
 /**
- * Stitch 设计 Agent 流程
+ * Stitch 设计 Agent 流程 (核心业务逻辑)
  */
 async function runStitchAgentFlow(userQuery, token) {
   const logs = [];
@@ -82,56 +102,57 @@ async function runStitchAgentFlow(userQuery, token) {
   };
 
   try {
-    addLog('System', '任务开始: ' + userQuery);
+    addLog('System', '接收设计任务: ' + userQuery);
 
-    // --- Step 1: 项目检查 ---
+    // --- Step 1: 项目检查/创建 ---
     let projectId = DEFAULT_PROJECT_ID;
     if (!projectId) {
-      addLog('Stitch SDK', '正在创建临时项目...');
-      const projectResult = await callStitchToolWithSdk('create_project', {
-        title: `Auto Gen ${new Date().getTime()}`
+      addLog('Stitch', '未检测到项目ID，正在尝试创建新项目...');
+      const projectResult = await callStitchToolDirect('create_project', {
+        title: `AI Gen - ${new Date().toLocaleTimeString('zh-CN')}`
       }, token);
 
       const text = projectResult.content[0].text;
-      const idMatch = text.match(/projects\/[^\s"']+/);
-      projectId = idMatch ? idMatch[0] : null;
+      const idMatch = text.match(/projects\/([^\s"']+)/);
+      projectId = idMatch ? idMatch[1] : null;
 
-      if (!projectId) throw new Error("无法获取项目 ID，请检查 Token 权限");
-      addLog('Stitch SDK', `项目 ID: ${projectId}`);
+      if (!projectId) throw new Error("项目创建失败或无法解析 ID");
+      addLog('Stitch', `项目就绪: ${projectId}`);
     }
 
-    // --- Step 2: 生成设计 ---
-    addLog('Stitch SDK', '正在利用 Gemini 3 生成 UI...');
-    const genResult = await callStitchToolWithSdk('generate_screen_from_text', {
+    // --- Step 2: 生成 UI 设计 (Gemini 3 Flash) ---
+    addLog('Stitch', '发送设计需求至 Gemini 3 Flash...');
+    const genResult = await callStitchToolDirect('generate_screen_from_text', {
       projectId: projectId,
       prompt: userQuery,
       deviceType: "DESKTOP",
       modelId: "GEMINI_3_FLASH"
     }, token);
-
+    console.log("[Stitch Debug] genResult: %j", genResult);
     const genText = genResult.content[0].text;
+    console.log("[Stitch Debug] genText:", genText);
     const screenMatch = genText.match(/screens\/([^"\s/]+)/);
     const screenId = screenMatch ? screenMatch[1] : null;
 
     if (!screenId) {
-      addLog('Stitch SDK', '设计生成排队中或未直接返回 ScreenID');
+      addLog('Stitch', '设计已入库，但未直接返回预览 ID。');
     } else {
-      addLog('Stitch SDK', `屏幕生成成功: ${screenId}`);
+      addLog('Stitch', `生成成功，Screen ID: ${screenId}`);
     }
 
-    // --- Step 3: 获取代码 ---
+    // --- Step 3: 提取 HTML 代码 ---
     let finalCode = "";
     if (screenId) {
-      addLog('Stitch SDK', '正在导出 HTML...');
-      const screenDetails = await callStitchToolWithSdk('get_screen', { projectId, screenId }, token);
+      addLog('Stitch', '正在导出 HTML 源代码...');
+      const screenDetails = await callStitchToolDirect('get_screen', { projectId, screenId }, token);
       const detailText = screenDetails.content[0].text;
 
       if (detailText.includes('<html')) {
         finalCode = detailText;
-        addLog('Stitch SDK', '代码导出成功');
+        addLog('Stitch', '代码提取完成。');
       } else {
-        addLog('Stitch SDK', '返回为描述信息，非直接源码');
-        finalCode = `<!-- Stitch Preview -->\n<div class="p-10 text-center"><h3>设计完成</h3><p>项目: ${projectId}</p></div>`;
+        addLog('Stitch', '返回内容非 HTML 源码，生成预览占位。');
+        finalCode = `<!-- Stitch Preview -->\n<div class="p-12 text-center bg-gray-50 border-2 border-dashed rounded-xl">\n  <h2 class="text-xl font-bold mb-2">Stitch 设计已完成</h2>\n  <p class="text-gray-600">项目: ${projectId}</p>\n  <p class="text-gray-600">屏幕: ${screenId}</p>\n  <p class="mt-4 text-sm text-blue-600 underline">请在控制台查看或手动导出代码</p>\n</div>`;
       }
     }
 
@@ -143,37 +164,43 @@ async function runStitchAgentFlow(userQuery, token) {
   }
 }
 
+// API 路由
 app.post('/api/generate', async (req, res) => {
-  console.log('[API] 收到生成请求，Payload:', JSON.stringify(req.body));
+  console.log('[API] 收到请求，Payload:', JSON.stringify(req.body));
 
   const { prompt, config } = req.body;
-  // 兼容前端传入的 key (App.tsx 中的字段名是 deepSeekKey)
-  const token = config?.stitchKey || config?.deepSeekKey || STITCH_ACCESS_TOKEN;
 
-  if (!token) {
-    console.error('[API] 错误: 未提供 Auth Token');
-    return res.status(401).json({ error: 'Auth Token Required' });
+  // 逻辑：优先使用前端 Settings 里的 Key，如果没有，再找环境变量
+  const token = config?.deepSeekKey || STITCH_ACCESS_TOKEN;
+
+  if (!token || token.trim() === "") {
+    console.error('[API] 拒绝请求: 未提供有效的 Auth Token (Stitch OAuth Access Token)');
+    return res.status(401).json({
+      error: '未提供验证凭据。请在前端设置中的 "DeepSeek Key" 处填入您的 Stitch OAuth Access Token。'
+    });
   }
+
+  console.log(`[API] 使用 Token: ${token.substring(0, 10)}...`);
 
   try {
     const result = await runStitchAgentFlow(prompt, token);
     res.json(result);
   } catch (e) {
-    console.error('[API] 内部错误:', e);
+    console.error('[API] 处理异常:', e);
     res.status(500).json({ error: e.message });
   }
 });
 
-// 错误处理中间件
+// 全局错误捕获
 app.use((err, req, res, next) => {
-  console.error('[Fatal Error]', err);
-  res.status(500).send('Server Error');
+  console.error('[Server Fatal]', err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('====================================');
-  console.log(`后端服务已就绪 (SDK 修复版)`);
-  console.log(`URL: http://localhost:${PORT}`);
+  console.log(`Stitch Native ESM Server 运行中`);
+  console.log(`监听地址: http://0.0.0.0:${PORT}`);
   console.log('====================================');
 });
