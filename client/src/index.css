@@ -1,0 +1,9 @@
+@import "tailwindcss"; /* v4 推荐的新写法，替代之前的 @tailwind base 等 */
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #f9fafb;
+}
