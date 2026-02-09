@@ -2,10 +2,6 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// 引入 MCP 官方 SDK 依赖
-// 注意：需要先运行 npm install @modelcontextprotocol/sdk
-const { McpClient, SSEClientTransport } = require('@modelcontextprotocol/sdk');
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -17,8 +13,12 @@ const STITCH_MCP_URL = 'https://stitch.googleapis.com/mcp';
 
 /**
  * 使用官方 SDK 调用 Stitch MCP 工具
+ * 解决 ESM 模块无法被 CommonJS require 的问题
  */
 async function callStitchToolWithSdk(toolName, args, apiKey) {
+  // 动态导入 ESM 模块
+  const { McpClient, SSEClientTransport } = await import('@modelcontextprotocol/sdk');
+
   // 1. 创建远程传输层 (Remote MCP 使用 SSE)
   const transport = new SSEClientTransport(new URL(STITCH_MCP_URL), {
     headers: {
@@ -30,17 +30,11 @@ async function callStitchToolWithSdk(toolName, args, apiKey) {
   const client = await McpClient.create(transport);
 
   try {
-    // 3. (可选) 检查可用工具确认连接正常
-    // const tools = await client.listTools();
-
-    // 4. 调用工具
-    // SDK 的 callTool 会处理 JSON-RPC 封装
+    // 3. 调用工具
     const result = await client.callTool(toolName, args);
-
-    // MCP 返回的结果通常在 content 数组中
     return result;
   } finally {
-    // 5. 必须关闭连接以释放资源
+    // 4. 必须关闭连接以释放资源
     await client.close();
   }
 }
@@ -63,10 +57,10 @@ async function runStitchAgentFlow(userQuery, apiKey) {
         title: `SDK Gen - ${new Date().toLocaleTimeString()}`
       }, apiKey);
 
-      // 解析返回结果 (SDK result 对象结构取决于服务器返回)
       const text = projectResult.content[0].text;
-      // 简单解析 ID
-      projectId = text.match(/projects\/[^"\s]+/) ? text.match(/projects\/[^"\s]+/)[0] : null;
+      // 尝试从返回中解析 projectId (格式通常为 projects/xxx)
+      const idMatch = text.match(/projects\/[^\s"']+/);
+      projectId = idMatch ? idMatch[0] : null;
 
       if (!projectId) throw new Error("无法解析创建的项目 ID");
       addLog('Stitch SDK', `项目就绪: ${projectId}`);
@@ -84,7 +78,7 @@ async function runStitchAgentFlow(userQuery, apiKey) {
     const genText = genResult.content[0].text;
     addLog('Stitch SDK', '生成结果已返回');
 
-    // 解析 Screen ID
+    // 解析 Screen ID (格式通常为 screens/xxx 或包含在路径中)
     const screenMatch = genText.match(/screens\/([^"\s/]+)/);
     const screenId = screenMatch ? screenMatch[1] : null;
 
@@ -98,11 +92,10 @@ async function runStitchAgentFlow(userQuery, apiKey) {
       }, apiKey);
 
       const detailText = screenDetails.content[0].text;
-      // 简单处理：如果是 HTML 标签则提取，否则返回链接/描述
       if (detailText.includes('<html')) {
         finalCode = detailText;
       } else {
-        finalCode = `<!-- Stitch Output -->\n<div class="p-8 text-center">设计已在项目 ${projectId} 中生成，屏幕 ID: ${screenId}。请前往控制台查看完整代码。</div>`;
+        finalCode = `<!-- Stitch Output -->\n<div class="p-8 text-center bg-gray-50 border border-dashed rounded-lg">\n  <h3 class="text-lg font-semibold">设计已在 Stitch 生成</h3>\n  <p class="text-sm text-gray-500">项目: ${projectId}</p>\n  <p class="text-sm text-gray-500">屏幕: ${screenId}</p>\n  <p class="mt-4 text-xs">请在 Stitch 控制台预览或导出完整代码。</p>\n</div>`;
       }
     }
 
