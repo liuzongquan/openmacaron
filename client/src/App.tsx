@@ -7,7 +7,7 @@ import {
 
 // --- 配置常量 ---
 // 默认连接本地后端，部署时请修改为生产环境 URL
-const API_URL = 'http://0.0.0.0:3001/api/generate';
+const API_URL = 'http://localhost:3001/api/generate';
 
 interface Message {
   id: string;
