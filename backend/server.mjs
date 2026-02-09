@@ -131,10 +131,10 @@ async function runStitchAgentFlow(userQuery, token) {
     console.log("[Stitch Debug] genResult: %j", genResult);
     const genText = genResult.content[0].text;
     console.log("[Stitch Debug] genText:", genText);
-    const screenResult = await callStitchToolDirect('get_screen', {
+    const screenListResult = await callStitchToolDirect('list_screens', {
       projectId: projectId,
     }, token)
-    console.log("[Stitch Debug] screenResult: %j", screenResult);
+    console.log("[Stitch Debug] screenListResult: %j", screenListResult);
 
     const screenMatch = genText.match(/screens\/([^"\s/]+)/);
     const screenId = screenMatch ? screenMatch[1] : null;
