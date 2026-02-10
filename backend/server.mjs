@@ -27,6 +27,32 @@ app.use((req, res, next) => {
 const STITCH_ACCESS_TOKEN = process.env.STITCH_ACCESS_TOKEN;
 const DEFAULT_PROJECT_ID = process.env.STITCH_PROJECT_ID;
 const STITCH_MCP_URL = 'https://stitch.googleapis.com/mcp';
+const GEMINI_CODE_GENERATOR_URL = 'http://0.0.0.0:8000/process-designs'
+
+async function genCode(prompt, structuredContent) {
+  console.log(`[Stitch Debug] prompt: ${prompt}`);
+  console.log(`[Stitch Debug] structuredContent: ${structuredContent}`);
+  const payload = {
+    prompt: prompt,
+    structuredContent: structuredContent
+  }
+  try {
+    const response = await fetch(GEMINI_CODE_GENERATOR_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const responseText = await response.text();
+    console.log(`[Stitch Debug] responseText: ${responseText}`);
+    return responseText;
+  } catch (error) {
+  console.error(`[Stitch Connection Error]`, error.message);
+  throw error;
+}
+}
 
 /**
  * 核心修复：手动实现基于 JSON-RPC 的工具调用
@@ -135,7 +161,7 @@ async function runStitchAgentFlow(userQuery, token) {
       projectId: projectId,
     }, token)
     console.log("[Stitch Debug] screenListResult: %j", screenListResult);
-
+    const responseText = await genCode(userQuery, screenListResult.structuredContent);
     const screenMatch = genText.match(/screens\/([^"\s/]+)/);
     const screenId = screenMatch ? screenMatch[1] : null;
 
