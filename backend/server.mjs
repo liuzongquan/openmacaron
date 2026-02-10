@@ -152,7 +152,7 @@ async function runStitchAgentFlow(userQuery, token) {
       projectId: projectId,
       prompt: userQuery,
       deviceType: "MOBILE",
-      modelId: "GEMINI_3_PRO"
+      modelId: "GEMINI_3_FLASH"
     }, token);
     console.log("[Stitch Debug] genResult: %j", genResult);
     const genText = genResult.content[0].text;
