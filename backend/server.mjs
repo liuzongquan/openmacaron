@@ -156,12 +156,12 @@ async function runStitchAgentFlow(userQuery, token) {
     }, token);
     console.log("[Stitch Debug] genResult: %j", genResult);
     const genText = genResult.content[0].text;
-    console.log("[Stitch Debug] genText:", genText);
-    const screenListResult = await callStitchToolDirect('list_screens', {
-      projectId: projectId,
-    }, token)
-    console.log("[Stitch Debug] screenListResult: %j", screenListResult);
-    const responseText = await genCode(userQuery, screenListResult.structuredContent);
+    // console.log("[Stitch Debug] genText:", genText);
+    // const screenListResult = await callStitchToolDirect('list_screens', {
+    //   projectId: projectId,
+    // }, token)
+    // console.log("[Stitch Debug] screenListResult: %j", screenListResult);
+    const responseText = await genCode(userQuery, genResult["structuredContent"]);
     const screenMatch = genText.match(/screens\/([^"\s/]+)/);
     const screenId = screenMatch ? screenMatch[1] : null;
 
