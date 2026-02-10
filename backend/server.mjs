@@ -151,8 +151,8 @@ async function runStitchAgentFlow(userQuery, token) {
     const genResult = await callStitchToolDirect('generate_screen_from_text', {
       projectId: projectId,
       prompt: userQuery,
-      deviceType: "DESKTOP",
-      modelId: "GEMINI_3_FLASH"
+      deviceType: "App",
+      modelId: "GEMINI_3_PRO"
     }, token);
     console.log("[Stitch Debug] genResult: %j", genResult);
     const genText = genResult.content[0].text;
