@@ -46,7 +46,7 @@ async function genCode(prompt, structuredContent, previous_interaction_id) {
       body: JSON.stringify(payload)
     });
 
-    const responseText = await response.text();
+    const responseText = await response.json();
     console.log(`[Stitch Debug] responseText: ${responseText}`);
     return responseText;
   } catch (error) {
