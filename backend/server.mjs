@@ -163,6 +163,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
       structuredContent = genResult["structuredContent"]
     }
     genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
+    console.log("[Stitch Debug] genCodeResult.status: ", genCodeResult["status"]);
     // --- Step 3: 提取 HTML 代码 ---
     let finalCode = "";
     let notation = "";
@@ -185,7 +186,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
       }
     }
 
-    return { success: true, logs, code: finalCode, version: Date.now(), notation, interaction_id:new_interaction_id?new_interaction_id:interaction_id };
+    return { success: true, logs, code: finalCode, version: Date.now(), notation: notation, interaction_id:new_interaction_id?new_interaction_id:interaction_id };
 
   } catch (error) {
     addLog('Error', error.message);
