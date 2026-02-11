@@ -132,14 +132,14 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
   let projectId = curProjectId;
   let new_interaction_id = "";
   try {
-    if((!interaction_id||interaction_id.trim()==='') && (!projectId||projectId.trim()===''))
+    if(!interaction_id||interaction_id.trim()==='')
     {
-      addLog('System', '接收设计任务: ' + originPrompt?originPrompt:userQuery);
+      addLog('System', '接收设计任务: ' + (originPrompt?originPrompt:userQuery));
 
       // --- Step 1: 项目检查/创建 ---
 
 
-      if (!projectId) {
+      if (!projectId||projectId.trim()==='') {
         addLog('Stitch', '未检测到项目ID，正在尝试创建新项目...');
         const projectResult = await callStitchToolDirect('create_project', {
           title: `AI Gen - ${new Date().toLocaleTimeString('zh-CN')}`
