@@ -117,7 +117,7 @@ export default function App() {
     {
       id: '1',
       role: 'assistant',
-      content: '我是 OpenMacaron (Live版)。请输入你的需求，我将通过 DeepSeek V3 为你生成代码。',
+      content: '我是 OpenMacaron (Live版)。请输入你的需求，我将通过 Gemini 为你生成代码。',
       timestamp: Date.now(),
       status: 'completed'
     }
