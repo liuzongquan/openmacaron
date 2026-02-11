@@ -197,7 +197,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
 app.post('/api/generate', async (req, res) => {
   console.log('[API] 收到请求，Payload:', JSON.stringify(req.body));
 
-  const { prompt, interaction_id, config } = req.body;
+  const { prompt, config, interaction_id } = req.body;
 
   // 逻辑：优先使用前端 Settings 里的 Key，如果没有，再找环境变量
   const token = config?.deepSeekKey || STITCH_ACCESS_TOKEN;

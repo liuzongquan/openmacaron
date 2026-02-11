@@ -155,8 +155,8 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt: userMsg.content,
-                interaction_id: currentArtifact?.interaction_id||null,
-                config: settings
+                config: settings,
+                interaction_id: currentArtifact?.interaction_id||"",
             })
         });
 
