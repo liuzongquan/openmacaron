@@ -23,6 +23,7 @@ interface Artifact {
   timestamp: number;
   notation: string;
   interaction_id: string;
+  project_id: string;
 }
 
 interface AppSettings {
@@ -157,6 +158,7 @@ export default function App() {
                 prompt: userMsg.content,
                 config: settings,
                 interaction_id: currentArtifact?.interaction_id||"",
+                project_id: currentArtifact?.project_id||""
             })
         });
 
@@ -175,7 +177,8 @@ export default function App() {
                 version: data.version,
                 timestamp: Date.now(),
                 notation: data.notation,
-                interaction_id: data.interaction_id
+                interaction_id: data.interaction_id,
+                project_id: data.project_id,
             });
             setActiveTab('preview');
         }

@@ -120,7 +120,7 @@ async function callStitchToolDirect(toolName, args, token) {
 /**
  * Stitch 设计 Agent 流程 (核心业务逻辑)
  */
-async function runStitchAgentFlow(userQuery, token, interaction_id) {
+async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId) {
   const logs = [];
   const addLog = (source, text) => {
     const logMsg = `[${source}] ${text}`;
@@ -129,13 +129,15 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
   };
   let genCodeResult = {}
   let structuredContent = {}
+  let projectId = curProjectId;
+  let new_interaction_id = "";
   try {
     if(!interaction_id||interaction_id.trim()==='')
     {
       addLog('System', '接收设计任务: ' + userQuery);
 
       // --- Step 1: 项目检查/创建 ---
-      let projectId = DEFAULT_PROJECT_ID;
+
 
       if (!projectId) {
         addLog('Stitch', '未检测到项目ID，正在尝试创建新项目...');
@@ -152,7 +154,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
       }
 
       // --- Step 2: 生成 UI 设计 (Gemini 3 Pro) ---
-      addLog('Stitch', '发送设计需求至 Gemini 3 Flash...');
+      addLog('Stitch', '发送设计需求至 Gemini 3 Pro...');
       const genResult = await callStitchToolDirect('generate_screen_from_text', {
         projectId: projectId,
         prompt: userQuery,
@@ -162,31 +164,37 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
       console.log("[Stitch Debug] genResult: %j", genResult);
       structuredContent = genResult["structuredContent"]
     }
-    genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
-    console.log("[Stitch Debug] genCodeResult.status: ", genCodeResult["status"]);
-    // --- Step 3: 提取 HTML 代码 ---
-    let finalCode = "";
-    let notation = "";
-    let new_interaction_id = "";
-    if (genCodeResult["status"] === "completed") {
-      addLog('Stitch', '正在导出 HTML 源代码...');
-      // const screenDetails = await callStitchToolDirect('get_screen', { projectId, screenId }, token);
-      // const detailText = screenDetails.content[0].text;
-      const results = genCodeResult["results"];
-      const htmlCode = results["htmlCode"];
-      notation = results["notation"];
-      new_interaction_id = genCodeResult["interaction_id"];
+    const structuredContentElementElement = structuredContent["outputComponents"][0]
+    if(structuredContentElementElement && "design" in structuredContentElementElement && structuredContentElementElement.design != null) {
+      genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
+      console.log("[Stitch Debug] genCodeResult.status: ", genCodeResult["status"]);
+      // --- Step 3: 提取 HTML 代码 ---
+      let finalCode = "";
+      let notation = "";
 
-      if (htmlCode.includes("<html")) {
-        finalCode = htmlCode;
-        addLog('Stitch', '代码提取完成。');
-      } else {
-        addLog('Stitch', '返回内容非 HTML 源码，生成预览占位。');
-        finalCode = `<!-- Stitch Preview -->\n<div class="p-12 text-center bg-gray-50 border-2 border-dashed rounded-xl">\n  <h2 class="text-xl font-bold mb-2">Stitch 设计已完成</h2>\n  <p class="text-gray-600">项目: ${projectId}</p>\n  <p class="text-gray-600">屏幕: ${screenId}</p>\n  <p class="mt-4 text-sm text-blue-600 underline">请在控制台查看或手动导出代码</p>\n</div>`;
+      if (genCodeResult["status"] === "completed") {
+        addLog('Stitch', '正在导出 HTML 源代码...');
+        // const screenDetails = await callStitchToolDirect('get_screen', { projectId, screenId }, token);
+        // const detailText = screenDetails.content[0].text;
+        const results = genCodeResult["results"];
+        const htmlCode = results["htmlCode"];
+        notation = results["notation"];
+        new_interaction_id = genCodeResult["interaction_id"];
+
+        if (htmlCode.includes("<html")) {
+          finalCode = htmlCode;
+          addLog('Stitch', '代码提取完成。');
+        } else {
+          addLog('Stitch', '返回内容非 HTML 源码，生成预览占位。');
+          finalCode = `<!-- Stitch Preview -->\n<div class="p-12 text-center bg-gray-50 border-2 border-dashed rounded-xl">\n  <h2 class="text-xl font-bold mb-2">Stitch 设计已完成</h2>\n  <p class="text-gray-600">项目: ${projectId}</p>\n  <p class="text-gray-600">屏幕: ${screenId}</p>\n  <p class="mt-4 text-sm text-blue-600 underline">请在控制台查看或手动导出代码</p>\n</div>`;
+        }
       }
+      return { success: true, logs, code: finalCode, version: Date.now(), notation: notation, interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId };
+    }else{
+      return { success: true, logs, code: "", version: Date.now(), notation: structuredContentElementElement['text'], interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId };
     }
 
-    return { success: true, logs, code: finalCode, version: Date.now(), notation: notation, interaction_id:new_interaction_id?new_interaction_id:interaction_id };
+
 
   } catch (error) {
     addLog('Error', error.message);
@@ -198,7 +206,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
 app.post('/api/generate', async (req, res) => {
   console.log('[API] 收到请求，Payload:', JSON.stringify(req.body));
 
-  const { prompt, config, interaction_id } = req.body;
+  const { prompt, config, interaction_id, curProjectId } = req.body;
 
   // 逻辑：优先使用前端 Settings 里的 Key，如果没有，再找环境变量
   const token = config?.deepSeekKey || STITCH_ACCESS_TOKEN;
@@ -213,7 +221,7 @@ app.post('/api/generate', async (req, res) => {
   console.log(`[API] 使用 Token: ${token.substring(0, 10)}...`);
 
   try {
-    const result = await runStitchAgentFlow(prompt, token, interaction_id);
+    const result = await runStitchAgentFlow(prompt, token, interaction_id, curProjectId);
     res.json(result);
   } catch (e) {
     console.error('[API] 处理异常:', e);
