@@ -21,6 +21,8 @@ interface Artifact {
   code: string;
   version: number;
   timestamp: number;
+  notation: string;
+  interaction_id: string;
 }
 
 interface AppSettings {
@@ -153,6 +155,7 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt: userMsg.content,
+                interaction_id: currentArtifact?.interaction_id||null,
                 config: settings
             })
         });
@@ -170,7 +173,9 @@ export default function App() {
             setCurrentArtifact({
                 code: data.code,
                 version: data.version,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                notation: data.notation,
+                interaction_id: data.interaction_id
             });
             setActiveTab('preview');
         }
@@ -178,7 +183,7 @@ export default function App() {
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { 
             ...m, 
             status: 'completed', 
-            content: '生成成功！请在右侧预览。' 
+            content: data.notation,
         } : m));
 
     } catch (err: any) {

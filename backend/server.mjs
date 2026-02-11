@@ -29,12 +29,13 @@ const DEFAULT_PROJECT_ID = process.env.STITCH_PROJECT_ID;
 const STITCH_MCP_URL = 'https://stitch.googleapis.com/mcp';
 const GEMINI_CODE_GENERATOR_URL = 'http://0.0.0.0:8000/process-designs'
 
-async function genCode(prompt, structuredContent) {
+async function genCode(prompt, structuredContent, previous_interaction_id) {
   console.log(`[Stitch Debug] prompt: ${prompt}`);
   console.log(`[Stitch Debug] structuredContent: ${structuredContent}`);
   const payload = {
     prompt: prompt,
-    structuredContent: structuredContent
+    structuredContent: structuredContent,
+    previous_interaction_id: previous_interaction_id
   }
   try {
     const response = await fetch(GEMINI_CODE_GENERATOR_URL, {
@@ -119,67 +120,64 @@ async function callStitchToolDirect(toolName, args, token) {
 /**
  * Stitch 设计 Agent 流程 (核心业务逻辑)
  */
-async function runStitchAgentFlow(userQuery, token) {
+async function runStitchAgentFlow(userQuery, token, interaction_id) {
   const logs = [];
   const addLog = (source, text) => {
     const logMsg = `[${source}] ${text}`;
     console.log(logMsg);
     logs.push(logMsg);
   };
-
+  let genCodeResult = {}
+  let structuredContent = {}
   try {
-    addLog('System', '接收设计任务: ' + userQuery);
+    if(!interaction_id||interaction_id.trim()==='')
+    {
+      addLog('System', '接收设计任务: ' + userQuery);
 
-    // --- Step 1: 项目检查/创建 ---
-    let projectId = DEFAULT_PROJECT_ID;
-    if (!projectId) {
-      addLog('Stitch', '未检测到项目ID，正在尝试创建新项目...');
-      const projectResult = await callStitchToolDirect('create_project', {
-        title: `AI Gen - ${new Date().toLocaleTimeString('zh-CN')}`
+      // --- Step 1: 项目检查/创建 ---
+      let projectId = DEFAULT_PROJECT_ID;
+
+      if (!projectId) {
+        addLog('Stitch', '未检测到项目ID，正在尝试创建新项目...');
+        const projectResult = await callStitchToolDirect('create_project', {
+          title: `AI Gen - ${new Date().toLocaleTimeString('zh-CN')}`
+        }, token);
+
+        const text = projectResult.content[0].text;
+        const idMatch = text.match(/projects\/([^\s"']+)/);
+        projectId = idMatch ? idMatch[1] : null;
+
+        if (!projectId) throw new Error("项目创建失败或无法解析 ID");
+        addLog('Stitch', `项目就绪: ${projectId}`);
+      }
+
+      // --- Step 2: 生成 UI 设计 (Gemini 3 Flash) ---
+      addLog('Stitch', '发送设计需求至 Gemini 3 Flash...');
+      const genResult = await callStitchToolDirect('generate_screen_from_text', {
+        projectId: projectId,
+        prompt: userQuery,
+        deviceType: "MOBILE",
+        modelId: "GEMINI_3_FLASH"
       }, token);
-
-      const text = projectResult.content[0].text;
-      const idMatch = text.match(/projects\/([^\s"']+)/);
-      projectId = idMatch ? idMatch[1] : null;
-
-      if (!projectId) throw new Error("项目创建失败或无法解析 ID");
-      addLog('Stitch', `项目就绪: ${projectId}`);
+      console.log("[Stitch Debug] genResult: %j", genResult);
+      structuredContent = genResult["structuredContent"]
     }
-
-    // --- Step 2: 生成 UI 设计 (Gemini 3 Flash) ---
-    addLog('Stitch', '发送设计需求至 Gemini 3 Flash...');
-    const genResult = await callStitchToolDirect('generate_screen_from_text', {
-      projectId: projectId,
-      prompt: userQuery,
-      deviceType: "MOBILE",
-      modelId: "GEMINI_3_FLASH"
-    }, token);
-    console.log("[Stitch Debug] genResult: %j", genResult);
-    const genText = genResult.content[0].text;
-    // console.log("[Stitch Debug] genText:", genText);
-    // const screenListResult = await callStitchToolDirect('list_screens', {
-    //   projectId: projectId,
-    // }, token)
-    // console.log("[Stitch Debug] screenListResult: %j", screenListResult);
-    const responseText = await genCode(userQuery, genResult["structuredContent"]);
-    const screenMatch = genText.match(/screens\/([^"\s/]+)/);
-    const screenId = screenMatch ? screenMatch[1] : null;
-
-    if (!screenId) {
-      addLog('Stitch', '设计已入库，但未直接返回预览 ID。');
-    } else {
-      addLog('Stitch', `生成成功，Screen ID: ${screenId}`);
-    }
-
+    genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
     // --- Step 3: 提取 HTML 代码 ---
     let finalCode = "";
-    if (screenId) {
+    let notation = "";
+    let interaction_id = "";
+    if (genCodeResult["status"] === "completed") {
       addLog('Stitch', '正在导出 HTML 源代码...');
-      const screenDetails = await callStitchToolDirect('get_screen', { projectId, screenId }, token);
-      const detailText = screenDetails.content[0].text;
+      // const screenDetails = await callStitchToolDirect('get_screen', { projectId, screenId }, token);
+      // const detailText = screenDetails.content[0].text;
+      const results = genCodeResult["results"];
+      const htmlCode = results["htmlCode"];
+      notation = results["notation"];
+      interaction_id = genCodeResult["interaction_id"];
 
-      if (detailText.includes('<html')) {
-        finalCode = detailText;
+      if (htmlCode.includes("<html")) {
+        finalCode = htmlCode;
         addLog('Stitch', '代码提取完成。');
       } else {
         addLog('Stitch', '返回内容非 HTML 源码，生成预览占位。');
@@ -187,7 +185,7 @@ async function runStitchAgentFlow(userQuery, token) {
       }
     }
 
-    return { success: true, logs, code: finalCode, version: Date.now() };
+    return { success: true, logs, code: finalCode, version: Date.now(), notation, interaction_id };
 
   } catch (error) {
     addLog('Error', error.message);
@@ -199,7 +197,7 @@ async function runStitchAgentFlow(userQuery, token) {
 app.post('/api/generate', async (req, res) => {
   console.log('[API] 收到请求，Payload:', JSON.stringify(req.body));
 
-  const { prompt, config } = req.body;
+  const { prompt, interaction_id, config } = req.body;
 
   // 逻辑：优先使用前端 Settings 里的 Key，如果没有，再找环境变量
   const token = config?.deepSeekKey || STITCH_ACCESS_TOKEN;
@@ -214,7 +212,7 @@ app.post('/api/generate', async (req, res) => {
   console.log(`[API] 使用 Token: ${token.substring(0, 10)}...`);
 
   try {
-    const result = await runStitchAgentFlow(prompt, token);
+    const result = await runStitchAgentFlow(prompt, token, interaction_id);
     res.json(result);
   } catch (e) {
     console.error('[API] 处理异常:', e);
