@@ -120,7 +120,7 @@ async function callStitchToolDirect(toolName, args, token) {
 /**
  * Stitch 设计 Agent 流程 (核心业务逻辑)
  */
-async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId) {
+async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId, originPrompt) {
   const logs = [];
   const addLog = (source, text) => {
     const logMsg = `[${source}] ${text}`;
@@ -134,7 +134,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
   try {
     if(!interaction_id||interaction_id.trim()==='')
     {
-      addLog('System', '接收设计任务: ' + userQuery);
+      addLog('System', '接收设计任务: ' + originPrompt?originPrompt:userQuery);
 
       // --- Step 1: 项目检查/创建 ---
 
@@ -165,10 +165,11 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
       structuredContent = genResult["structuredContent"]
     }
     let structuredContentElementElement = ""
-    if(structuredContent)
+    if(structuredContent && Object.keys(structuredContent).length > 0 && "outputComponents" in structuredContent) {
       structuredContentElementElement = structuredContent["outputComponents"][0]
+    }
     if(structuredContentElementElement && "design" in structuredContentElementElement && structuredContentElementElement.design != null || interaction_id) {
-      genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
+      genCodeResult = await genCode(originPrompt?originPrompt:userQuery, structuredContent, interaction_id);
       console.log("[Stitch Debug] genCodeResult.status: ", genCodeResult["status"]);
       // --- Step 3: 提取 HTML 代码 ---
       let finalCode = "";
@@ -193,7 +194,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
       }
       return { success: true, logs, code: finalCode, version: Date.now(), notation: notation, interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId };
     }else{
-      return { success: true, logs, code: "", version: Date.now(), notation: structuredContentElementElement['text'], interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId };
+      return { success: true, logs, code: "", version: Date.now(), notation: structuredContentElementElement['text'], interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId, origin_prompt: originPrompt };
     }
 
 
@@ -208,7 +209,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
 app.post('/api/generate', async (req, res) => {
   console.log('[API] 收到请求，Payload:', JSON.stringify(req.body));
 
-  const { prompt, config, interaction_id, curProjectId } = req.body;
+  const { prompt, config, interaction_id, curProjectId, originPrompt } = req.body;
 
   // 逻辑：优先使用前端 Settings 里的 Key，如果没有，再找环境变量
   const token = config?.deepSeekKey || STITCH_ACCESS_TOKEN;
@@ -223,7 +224,7 @@ app.post('/api/generate', async (req, res) => {
   console.log(`[API] 使用 Token: ${token.substring(0, 10)}...`);
 
   try {
-    const result = await runStitchAgentFlow(prompt, token, interaction_id, curProjectId);
+    const result = await runStitchAgentFlow(prompt, token, interaction_id, curProjectId, originPrompt);
     res.json(result);
   } catch (e) {
     console.error('[API] 处理异常:', e);

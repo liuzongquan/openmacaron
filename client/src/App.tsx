@@ -24,6 +24,7 @@ interface Artifact {
   notation: string;
   interaction_id: string;
   project_id: string;
+  origin_prompt?: string;
 }
 
 interface AppSettings {
@@ -158,7 +159,8 @@ export default function App() {
                 prompt: userMsg.content,
                 config: settings,
                 interaction_id: currentArtifact?.interaction_id||"",
-                project_id: currentArtifact?.project_id||""
+                project_id: currentArtifact?.project_id||"",
+                origin_prompt: currentArtifact?.origin_prompt||"",
             })
         });
 
@@ -179,6 +181,7 @@ export default function App() {
                 notation: data.notation,
                 interaction_id: data.interaction_id,
                 project_id: data.project_id,
+                origin_prompt: data.origin_prompt
             });
             setActiveTab('preview');
         }
