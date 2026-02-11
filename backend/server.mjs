@@ -168,13 +168,13 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
 
     // 调用代码生成服务
     // Parse result properly if it returns a string
-    const rawGenResult = await genCode(userQuery, structuredContent, interaction_id);
-    try {
-      genCodeResult = typeof rawGenResult === 'string' ? JSON.parse(rawGenResult) : rawGenResult;
-    } catch (e) {
-      console.error("Failed to parse genCode response:", rawGenResult);
-      throw new Error("代码生成服务返回了无效的 JSON");
-    }
+    const genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
+    // try {
+    //   genCodeResult = typeof rawGenResult === 'string' ? JSON.parse(rawGenResult) : rawGenResult;
+    // } catch (e) {
+    //   console.error("Failed to parse genCode response:", rawGenResult);
+    //   throw new Error("代码生成服务返回了无效的 JSON");
+    // }
 
     // --- Step 3: 提取 HTML 代码 ---
     let finalCode = "";
