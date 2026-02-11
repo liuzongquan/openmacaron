@@ -160,7 +160,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
         projectId: projectId,
         prompt: userQuery,
         deviceType: "MOBILE",
-        modelId: "GEMINI_3_PRO"
+        modelId: "GEMINI_3_FLASH"
       }, token);
       console.log("[Stitch Debug] genResult: %j", genResult);
       structuredContent = genResult["structuredContent"]
