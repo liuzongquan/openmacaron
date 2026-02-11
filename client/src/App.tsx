@@ -173,7 +173,7 @@ export default function App() {
         // 4. 更新状态
         setAgentLogs(data.logs || []);
         
-        if (data.project_id) {
+        if (data.success) {
             setCurrentArtifact({
                 code: data.code,
                 version: data.version,
