@@ -151,13 +151,13 @@ async function runStitchAgentFlow(userQuery, token, interaction_id) {
         addLog('Stitch', `项目就绪: ${projectId}`);
       }
 
-      // --- Step 2: 生成 UI 设计 (Gemini 3 Flash) ---
+      // --- Step 2: 生成 UI 设计 (Gemini 3 Pro) ---
       addLog('Stitch', '发送设计需求至 Gemini 3 Flash...');
       const genResult = await callStitchToolDirect('generate_screen_from_text', {
         projectId: projectId,
         prompt: userQuery,
         deviceType: "MOBILE",
-        modelId: "GEMINI_3_FLASH"
+        modelId: "GEMINI_3_PRO"
       }, token);
       console.log("[Stitch Debug] genResult: %j", genResult);
       structuredContent = genResult["structuredContent"]
