@@ -121,6 +121,7 @@ async function callStitchToolDirect(toolName, args, token) {
  * Stitch 设计 Agent 流程 (核心业务逻辑)
  */
 async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId, originPrompt) {
+  console.log(`[runStitchAgentFlow]接收到的参数：\nuserQuery:${userQuery}\ntoken:${token}\ninteraction_id:${interaction_id}\ncurProjectId:${curProjectId}\noriginPrompt:${originPrompt}`);
   const logs = [];
   const addLog = (source, text) => {
     const logMsg = `[${source}] ${text}`;
@@ -138,7 +139,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
 
       // --- Step 1: 项目检查/创建 ---
 
-
+      console.log(`projectId:${projectId}`);
       if (!projectId||projectId.trim()==='') {
         addLog('Stitch', '未检测到项目ID，正在尝试创建新项目...');
         const projectResult = await callStitchToolDirect('create_project', {
@@ -194,7 +195,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
       }
       return { success: true, logs, code: finalCode, version: Date.now(), notation: notation, interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId };
     }else{
-      return { success: true, logs, code: "", version: Date.now(), notation: structuredContentElementElement['text'], interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId, origin_prompt: originPrompt };
+      return { success: true, logs, code: "", version: Date.now(), notation: structuredContentElementElement['text'], interaction_id:new_interaction_id?new_interaction_id:interaction_id, project_id: projectId, origin_prompt: originPrompt?originPrompt:userQuery };
     }
 
 
