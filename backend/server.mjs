@@ -164,8 +164,10 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
       console.log("[Stitch Debug] genResult: %j", genResult);
       structuredContent = genResult["structuredContent"]
     }
-    const structuredContentElementElement = structuredContent["outputComponents"][0]
-    if(structuredContentElementElement && "design" in structuredContentElementElement && structuredContentElementElement.design != null) {
+    let structuredContentElementElement = ""
+    if(structuredContent)
+      structuredContentElementElement = structuredContent["outputComponents"][0]
+    if(structuredContentElementElement && "design" in structuredContentElementElement && structuredContentElementElement.design != null || interaction_id) {
       genCodeResult = await genCode(userQuery, structuredContent, interaction_id);
       console.log("[Stitch Debug] genCodeResult.status: ", genCodeResult["status"]);
       // --- Step 3: 提取 HTML 代码 ---
