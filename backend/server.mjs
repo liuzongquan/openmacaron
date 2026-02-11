@@ -132,7 +132,7 @@ async function runStitchAgentFlow(userQuery, token, interaction_id, curProjectId
   let projectId = curProjectId;
   let new_interaction_id = "";
   try {
-    if(!interaction_id||interaction_id.trim()==='')
+    if((!interaction_id||interaction_id.trim()==='') && (!projectId||projectId.trim()===''))
     {
       addLog('System', '接收设计任务: ' + originPrompt?originPrompt:userQuery);
 
